@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 from deepchem.data import Dataset, DiskDataset
 from deepchem.utils import get_print_threshold
+from deepchem import _scientific_checkers
 
 logger = logging.getLogger(__name__)
 
@@ -1030,8 +1031,11 @@ class MolecularWeightSplitter(Splitter):
         train_cutoff = int(frac_train * len(sortidx))
         valid_cutoff = int((frac_train + frac_valid) * len(sortidx))
 
-        return (sortidx[:train_cutoff], sortidx[train_cutoff:valid_cutoff],
-                sortidx[valid_cutoff:])
+        result = (sortidx[:train_cutoff], sortidx[train_cutoff:valid_cutoff],
+                  sortidx[valid_cutoff:])
+        if _scientific_checkers.enabled():
+            _scientific_checkers.check_mass_split(dataset.ids, *result)
+        return result
 
 
 class MaxMinSplitter(Splitter):
@@ -1569,6 +1573,9 @@ class ScaffoldSplitter(Splitter):
                     valid_inds += scaffold_set
             else:
                 train_inds += scaffold_set
+        if _scientific_checkers.enabled():
+            _scientific_checkers.check_scaffold_split(dataset.ids, train_inds,
+                                                      valid_inds, test_inds)
         return train_inds, valid_inds, test_inds
 
     def generate_scaffolds(self,

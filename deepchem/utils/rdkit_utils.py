@@ -21,6 +21,7 @@ from deepchem.utils.fragment_utils import MolecularFragment
 from deepchem.utils.fragment_utils import MoleculeLoadException
 from typing import Any, List, Sequence, Tuple, Set, Optional, Dict, Union
 from deepchem.utils.typing import OneOrMany, RDKitMol
+from deepchem import _scientific_checkers
 
 logger = logging.getLogger(__name__)
 
@@ -641,6 +642,8 @@ def compute_ring_normal(mol, ring_indices):
     v1 = points[1] - points[0]
     v2 = points[2] - points[0]
     normal = np.cross(v1, v2)
+    if _scientific_checkers.enabled():
+        _scientific_checkers.check_ring_normal(mol, ring_indices, normal)
     return normal
 
 

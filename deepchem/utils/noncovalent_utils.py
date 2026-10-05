@@ -1,6 +1,7 @@
 """The functions in these utilities check that noncovalent interactions happen"""
 import numpy as np
 from collections import Counter
+from deepchem import _scientific_checkers
 from deepchem.utils.fragment_utils import get_partial_charge
 from deepchem.utils.rdkit_utils import compute_ring_center
 from deepchem.utils.rdkit_utils import compute_ring_normal
@@ -46,6 +47,9 @@ def compute_salt_bridges(first, second, pairwise_distances, cutoff=5.0):
         second_atom = second.GetAtoms()[int(contact[1])]
         if is_salt_bridge(first_atom, second_atom):
             salt_bridge_contacts.append(contact)
+    if _scientific_checkers.enabled():
+        _scientific_checkers.check_salt_bridges(first, second,
+                                                salt_bridge_contacts)
     return salt_bridge_contacts
 
 
@@ -174,6 +178,12 @@ def compute_hydrogen_bonds(frag1, frag2, pairwise_distances, hbond_dist_bins,
         hbond_contacts.append(
             compute_hbonds_in_range(frag1, frag2, pairwise_distances,
                                     hbond_dist_bin, hbond_angle_cutoff))
+    if _scientific_checkers.enabled():
+        _scientific_checkers.check_hydrogen_bonds(frag1, frag2,
+                                                  pairwise_distances,
+                                                  hbond_dist_bins,
+                                                  hbond_angle_cutoffs,
+                                                  hbond_contacts)
     return (hbond_contacts)
 
 
@@ -254,10 +264,13 @@ def is_cation_pi(cation_position,
     cation_to_ring_vec = cation_position - ring_center
     dist = np.linalg.norm(cation_to_ring_vec)
     angle = angle_between(cation_to_ring_vec, ring_normal) * 180. / np.pi
-    if ((angle < angle_cutoff or angle > 180.0 - angle_cutoff) and
-        (dist < dist_cutoff)):
-        return True
-    return False
+    result = bool((angle < angle_cutoff or angle > 180.0 - angle_cutoff) and
+                  (dist < dist_cutoff))
+    if _scientific_checkers.enabled():
+        _scientific_checkers.check_cation_pi(cation_position, ring_center,
+                                             ring_normal, dist_cutoff,
+                                             angle_cutoff, result)
+    return result
 
 
 def compute_pi_stack(mol1,

@@ -1,5 +1,6 @@
 import numpy as np
 from typing import Optional, Callable
+from deepchem import _scientific_checkers
 
 
 class ElectronSampler:
@@ -125,7 +126,10 @@ class ElectronSampler:
 
         diff = y - self.central_value
         distance = np.linalg.norm(diff, axis=-1, keepdims=True)
-        return 1.0 / np.mean(1.0 / distance, axis=-2, keepdims=True)
+        result = 1.0 / np.mean(1.0 / distance, axis=-2, keepdims=True)
+        if _scientific_checkers.enabled():
+            _scientific_checkers.check_harmonic_mean(self, y, result)
+        return result
 
     def log_prob_gaussian(self, y: np.ndarray, mu: np.ndarray,
                           sigma: np.ndarray) -> np.ndarray:
@@ -148,7 +152,11 @@ class ElectronSampler:
 
         numer = np.sum((-0.5 * ((y - mu)**2) / (sigma**2)), axis=(1, 2, 3))
         denom = y.shape[-1] * np.sum(np.log(sigma), axis=(1, 2, 3))
-        return numer - denom
+        result = numer - denom
+        if _scientific_checkers.enabled():
+            _scientific_checkers.check_log_prob_gaussian(self, y, mu, sigma,
+                                                         result)
+        return result
 
     def gauss_initialize_position(self,
                                   no_sample: np.ndarray,
@@ -177,6 +185,8 @@ class ElectronSampler:
                 np.random.normal(mean, stddev,
                                  (self.batch_no, specific_sample, 1, ndim)),
                 axis=1)
+        if _scientific_checkers.enabled():
+            _scientific_checkers.check_electron_init(self, no_sample, stddev)
 
     def electron_update(self, lp1, lp2, move_prob, ratio, x2) -> np.ndarray:
         """
@@ -309,5 +319,8 @@ class ElectronSampler:
                                           size=np.shape(self.x)[0]))
                     lp1 = self.electron_update(lp1, lp2, move_prob, ratio, x2)
 
-        return self.num_accept / (
+        accepted = self.num_accept / (
             (i + 1) * np.shape(self.x)[0])  # accepted move ratio
+        if _scientific_checkers.enabled():
+            _scientific_checkers.check_flat_target_acceptance(self, stddev)
+        return accepted

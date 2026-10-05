@@ -3,6 +3,7 @@ from typing import Optional, List, Dict, Tuple
 import torch
 from deepchem.models.torch_models.layers import Fiber
 from deepchem.utils.cache_utils import cached_dirpklgz
+from deepchem import _scientific_checkers
 
 
 def fiber2head(F: Dict[str, torch.Tensor],
@@ -196,8 +197,11 @@ def get_basis(G,
                 K_Js = []
                 for J in range(abs(d_in - d_out), d_in + d_out + 1):
                     # Compute basis transformation matrix Q_J
-                    Q_J = basis_transformation_Q_J(J, d_in,
-                                                   d_out).float().T.to(device)
+                    Q_raw = basis_transformation_Q_J(J, d_in, d_out)
+                    if _scientific_checkers.enabled():
+                        _scientific_checkers.check_cg_intertwiner(
+                            J, d_in, d_out, Q_raw)
+                    Q_J = Q_raw.float().T.to(device)
 
                     # Apply projection using spherical harmonics
                     K_J = torch.matmul(Y[J], Q_J)
@@ -514,7 +518,10 @@ class SphericalHarmonics:
         results = []
         for m in range(-d, d + 1):
             results.append(self.get_element(d, m, theta, phi))
-        return torch.stack(results, dim=-1)
+        Y = torch.stack(results, dim=-1)
+        if _scientific_checkers.enabled():
+            _scientific_checkers.check_spherical_harmonics(d, theta, phi, Y)
+        return Y
 
 
 def irr_repr(order: int,
@@ -655,6 +662,8 @@ def su2_generators(k: int) -> torch.Tensor:
     # Stack the generators along the first dimension to create a tensor
     generators = torch.stack([x_generator, z_generator, y_generator], dim=0)
 
+    if _scientific_checkers.enabled():
+        _scientific_checkers.check_su2_generators(k, generators)
     return generators
 
 
@@ -895,6 +904,9 @@ def get_spherical_from_cartesian(cartesian: torch.Tensor,
         spherical[..., ind_radius] = torch.sqrt(
             r_xy + cartesian[..., cartesian_z]**2) / divide_radius_by
 
+    if _scientific_checkers.enabled():
+        _scientific_checkers.check_spherical_chart(cartesian, divide_radius_by,
+                                                   spherical)
     return spherical
 
 
@@ -1073,11 +1085,14 @@ def change_basis_real_to_complex(
         device = torch.empty(0).device
 
     # Ensure the tensor is contiguous and on the specified device
-    return q.to(
+    q_out = q.to(
         dtype=dtype,
         device=device,
         copy=True,
         memory_format=torch.contiguous_format)  # type: ignore[call-overload]
+    if _scientific_checkers.enabled():
+        _scientific_checkers.check_basis_change(k, q_out)
+    return q_out
 
 
 def so3_generators(k: int) -> torch.Tensor:
@@ -1152,7 +1167,10 @@ def so3_generators(k: int) -> torch.Tensor:
     X = torch.conj(Q.T) @ X @ Q
 
     # Return the real part of the SO(3) generators to ensure they are purely real.
-    return torch.real(X)
+    G = torch.real(X)
+    if _scientific_checkers.enabled():
+        _scientific_checkers.check_so3_generators(k, G)
+    return G
 
 
 def wigner_D(k: int, alpha: torch.Tensor, beta: torch.Tensor,
@@ -1205,6 +1223,7 @@ def wigner_D(k: int, alpha: torch.Tensor, beta: torch.Tensor,
              [ 0.0774,  0.9211, -0.3817],
              [-0.7044,  0.3214,  0.6329]]])
     """
+    alpha_in, beta_in, gamma_in = alpha, beta, gamma
     # Ensure that alpha, beta, and gamma have the same shape for broadcasting.
     alpha, beta, gamma = torch.broadcast_tensors(alpha, beta, gamma)
 
@@ -1221,6 +1240,9 @@ def wigner_D(k: int, alpha: torch.Tensor, beta: torch.Tensor,
     D_matrix = torch.matrix_exp(gamma * (X[1].unsqueeze(0))) @ torch.matrix_exp(
         beta * (X[0].unsqueeze(0))) @ torch.matrix_exp(alpha *
                                                        (X[1].unsqueeze(0)))
+    if _scientific_checkers.enabled():
+        _scientific_checkers.check_wigner_d(k, alpha_in, beta_in,
+                                           gamma_in, D_matrix)
     return D_matrix
 
 
@@ -2137,7 +2159,10 @@ class SO3(LieGroup):
         theta = torch.norm(w, dim=-1)[..., None, None]
         K = cross_matrix(w)
         I_m = torch.eye(3, device=K.device, dtype=K.dtype)
-        return I_m + K * sinc(theta) + (K @ K) * cosc(theta)
+        R = I_m + K * sinc(theta) + (K @ K) * cosc(theta)
+        if _scientific_checkers.enabled():
+            _scientific_checkers.check_so3_exp(w, R)
+        return R
 
     def log(self, R: torch.Tensor) -> torch.Tensor:
         r"""Logarithmic map :math:`\log : \mathrm{SO}(3) \rightarrow \mathfrak{so}(3)`.
@@ -2169,7 +2194,10 @@ class SO3(LieGroup):
             ..., 2, 2]  # to compute the trace: tr(R)= R11​+R22​+R33
         costheta = ((trR - 1) / 2).clamp(min=-1, max=1).unsqueeze(-1)
         theta = torch.acos(costheta)
-        return uncross_matrix(R) * sinc_inv(theta)
+        w = uncross_matrix(R) * sinc_inv(theta)
+        if _scientific_checkers.enabled():
+            _scientific_checkers.check_so3_log(R, w)
+        return w
 
     def sample(
         self,

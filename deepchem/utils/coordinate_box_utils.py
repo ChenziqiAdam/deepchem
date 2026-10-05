@@ -2,6 +2,7 @@
 from typing import List, Sequence, Tuple
 import numpy as np
 from scipy.spatial import ConvexHull
+from deepchem import _scientific_checkers
 
 
 class CoordinateBox(object):
@@ -251,7 +252,10 @@ def intersection(box1: CoordinateBox, box2: CoordinateBox) -> CoordinateBox:
     x_intersection = intersect_interval(box1.x_range, box2.x_range)
     y_intersection = intersect_interval(box1.y_range, box2.y_range)
     z_intersection = intersect_interval(box1.z_range, box2.z_range)
-    return CoordinateBox(x_intersection, y_intersection, z_intersection)
+    result = CoordinateBox(x_intersection, y_intersection, z_intersection)
+    if _scientific_checkers.enabled():
+        _scientific_checkers.check_box_intersection(box1, box2, result)
+    return result
 
 
 def union(box1: CoordinateBox, box2: CoordinateBox) -> CoordinateBox:
@@ -313,6 +317,8 @@ def merge_overlapping_boxes(boxes: List[CoordinateBox],
                 unique_box = False
         if unique_box:
             outputs.append(box)
+    if _scientific_checkers.enabled():
+        _scientific_checkers.check_box_merge(boxes, outputs)
     return outputs
 
 

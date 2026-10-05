@@ -10,6 +10,7 @@ from typing import Any, List, Optional
 from deepchem.utils.typing import RDKitMol
 from deepchem.utils.data_utils import pad_array
 from deepchem.feat.base_classes import MolecularFeaturizer
+from deepchem import _scientific_checkers
 
 
 class CoulombMatrix(MolecularFeaturizer):
@@ -146,6 +147,8 @@ class CoulombMatrix(MolecularFeaturizer):
         n_atoms = mol.GetNumAtoms()
         z = [atom.GetAtomicNum() for atom in mol.GetAtoms()]
         rval = []
+        if _scientific_checkers.enabled():
+            mol_snapshot = Chem.Mol(mol)
         for conf in mol.GetConformers():
             d = self.get_interatomic_distances(conf)
             m = np.outer(z, z) / d
@@ -157,6 +160,9 @@ class CoulombMatrix(MolecularFeaturizer):
             else:
                 m = pad_array(m, self.max_atoms)
                 rval.append(m)
+        if _scientific_checkers.enabled():
+            _scientific_checkers.check_coulomb_matrix(self, mol_snapshot,
+                                                      np.asarray(rval))
         return np.asarray(rval)
 
     def randomize_coulomb_matrix(self, m: np.ndarray) -> List[np.ndarray]:
@@ -191,6 +197,8 @@ class CoulombMatrix(MolecularFeaturizer):
             p = np.argsort(row_norms + e)
             new = m[p][:, p]  # permute rows first, then columns
             rval.append(new)
+        if _scientific_checkers.enabled():
+            _scientific_checkers.check_randomize_coulomb(m, rval)
         return rval
 
     @staticmethod
@@ -316,4 +324,6 @@ class CoulombMatrixEig(CoulombMatrix):
         if features.shape[0] == 1:
             # `(1, max_atoms)` -> `(max_atoms,)`
             features = np.squeeze(features, axis=0)
+        if _scientific_checkers.enabled():
+            _scientific_checkers.check_coulomb_eig(self, datapoint, features)
         return features

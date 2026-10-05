@@ -4,6 +4,7 @@ Geometric utility functions for 3D geometry.
 import numpy as np
 from scipy.spatial.distance import cdist
 from copy import deepcopy
+from deepchem import _scientific_checkers
 
 
 def unit_vector(vector: np.ndarray) -> np.ndarray:
@@ -54,9 +55,11 @@ def angle_between(vector_i: np.ndarray, vector_j: np.ndarray) -> float:
     angle = np.arccos(np.dot(vector_i_u, vector_j_u))
     if np.isnan(angle):
         if np.allclose(vector_i_u, vector_j_u):
-            return 0.0
+            angle = 0.0
         else:
-            return np.pi
+            angle = np.pi
+    if _scientific_checkers.enabled():
+        _scientific_checkers.check_angle_between(vector_i, vector_j, angle)
     return angle
 
 
@@ -122,6 +125,8 @@ def generate_random_rotation_matrix() -> np.ndarray:
     vp /= np.linalg.norm(vp)
     w = np.cross(u, vp)
     R = np.column_stack((u, vp, w))
+    if _scientific_checkers.enabled():
+        _scientific_checkers.check_random_rotation(R)
     return R
 
 
@@ -145,6 +150,9 @@ def rotate_molecules(mol_coordinates_list):
         rotated_coordinates = np.transpose(np.dot(R, np.transpose(coordinates)))
         rotated_coordinates_list.append(rotated_coordinates)
 
+    if _scientific_checkers.enabled():
+        _scientific_checkers.check_rotate_molecules(mol_coordinates_list,
+                                                    rotated_coordinates_list)
     return (rotated_coordinates_list)
 
 
@@ -167,7 +175,11 @@ def is_angle_within_cutoff(vector_i: np.ndarray, vector_j: np.ndarray,
         Whether two vectors are within a cutoff from 180 degrees apart
     """
     angle = angle_between(vector_i, vector_j) * 180. / np.pi
-    return (angle > (180 - angle_cutoff) and angle < (180. + angle_cutoff))
+    result = (angle > (180 - angle_cutoff) and angle < (180. + angle_cutoff))
+    if _scientific_checkers.enabled():
+        _scientific_checkers.check_angle_cutoff(vector_i, vector_j,
+                                                angle_cutoff, result)
+    return result
 
 
 def compute_centroid(coordinates: np.ndarray) -> np.ndarray:
@@ -257,4 +269,8 @@ def compute_pairwise_distances(first_coordinate: np.ndarray,
     pairwise_distances = cdist(first_coordinate,
                                second_coordinate,
                                metric='euclidean')
+    if _scientific_checkers.enabled():
+        _scientific_checkers.check_pairwise_distances(first_coordinate,
+                                                      second_coordinate,
+                                                      pairwise_distances)
     return pairwise_distances

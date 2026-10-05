@@ -5,6 +5,7 @@ from typing import Union
 import numpy as np
 
 import torch
+from deepchem import _scientific_checkers
 
 ZType = Union[int, float, torch.Tensor]
 periodic_table_atomz = {
@@ -192,6 +193,8 @@ def get_atomz(element: Union[str, ZType]) -> ZType:
         except KeyError:
             raise KeyError("Element Does Not Exists or Not Documented: %s" %
                            element)
+        if _scientific_checkers.enabled():
+            _scientific_checkers.check_atomz(element, atom_z)
         return atom_z
     elif isinstance(element, torch.Tensor):  # Just return itself.
         try:
@@ -236,7 +239,10 @@ def get_atom_mass(atom_z: int) -> float:
     except KeyError:
         raise KeyError("Element Does Not Exists or Not Documented: %d" % atom_z)
 
-    return atomic_mass * 1822.888486209
+    mass = atomic_mass * 1822.888486209
+    if _scientific_checkers.enabled():
+        _scientific_checkers.check_atom_mass(atom_z, mass)
+    return mass
 
 
 def get_period(atom_z: int) -> int:
@@ -286,4 +292,6 @@ def get_period(atom_z: int) -> int:
     else:
         raise RuntimeError("Unimplemented atomz: %d" % atom_z)
 
+    if _scientific_checkers.enabled():
+        _scientific_checkers.check_period(atom_z, period)
     return period

@@ -6,6 +6,7 @@ from typing import List, Optional, Sequence, Set, Tuple, Union
 import logging
 from deepchem.utils.typing import RDKitAtom, RDKitMol
 from deepchem.utils.geometry_utils import compute_pairwise_distances
+from deepchem import _scientific_checkers
 
 logger = logging.getLogger(__name__)
 
@@ -214,7 +215,10 @@ def merge_molecular_fragments(
         for mol_frag in molecules:
             all_atoms += mol_frag.GetAtoms()
             all_coords.append(mol_frag.GetCoords())
-        return MolecularFragment(all_atoms, np.concatenate(all_coords))
+        merged = MolecularFragment(all_atoms, np.concatenate(all_coords))
+        if _scientific_checkers.enabled():
+            _scientific_checkers.check_merge_fragments(molecules, merged)
+        return merged
 
 
 def get_mol_subset(
@@ -290,7 +294,10 @@ def strip_hydrogens(
         ind for (ind, atomic_number) in enumerate(atomic_numbers)
         if (atomic_number != 1)
     ]
-    return get_mol_subset(coords, mol, atom_indices_to_keep)
+    result = get_mol_subset(coords, mol, atom_indices_to_keep)
+    if _scientific_checkers.enabled():
+        _scientific_checkers.check_strip_hydrogens(coords, mol, result)
+    return result
 
 
 def get_contact_atom_indices(fragments: List[Tuple[np.ndarray, RDKitMol]],
@@ -336,6 +343,9 @@ def get_contact_atom_indices(fragments: List[Tuple[np.ndarray, RDKitMol]],
         keep_inds[ind1] = keep_inds[ind1].union(frag1_atoms)
         keep_inds[ind2] = keep_inds[ind2].union(frag2_atoms)
     sorted_keep_inds = [sorted(list(keep)) for keep in keep_inds]
+    if _scientific_checkers.enabled():
+        _scientific_checkers.check_contact_atoms(fragments, cutoff,
+                                                 sorted_keep_inds)
     return sorted_keep_inds
 
 
