@@ -385,6 +385,10 @@ def check_basis_change(k, Q):
             k = int(k)
             if k < 0 or k > 64 or not _finite(Q):
                 return
+            if not Q.is_complex():
+                # a real dtype cannot represent the complex basis change
+                # (the cast drops the imaginary part): outside the law's domain
+                return
             Qd = Q.detach().to(torch.complex128)
             n = 2 * k + 1
             resid = float((Qd.conj().T @ Qd -
