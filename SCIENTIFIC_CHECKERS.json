@@ -105,7 +105,7 @@
       "id": "DC-EQ-011",
       "invariant": "The change-of-basis matrix Q is unitary: Q^H Q = I.",
       "observation_point": "Before change_basis_real_to_complex returns.",
-      "precondition": "Integer degree k >= 0.",
+      "precondition": "Integer degree k >= 0 and a complex output dtype (a real dtype cannot represent the basis change).",
       "rationale": "A non-unitary change between orthonormal bases mixes norms between real and complex harmonics.",
       "scientific_quantity": "real-to-complex spherical-harmonic basis change",
       "source": "deepchem/utils/equivariance_utils.py",
