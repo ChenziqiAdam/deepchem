@@ -22,6 +22,7 @@ _EPS = float(np.finfo(np.float64).eps)
 _C = 64.0
 _TAYLOR_FLOOR = 1e-9
 _HUGE = 1e100
+_MIN_SCALE = 1e-100  # lower magnitude bound: squares stay normal
 
 
 def enabled():
@@ -372,6 +373,11 @@ def check_spherical_chart(cartesian, divide_radius_by, spherical):
                 return
             eps = _eps_of(spherical)
             expected = nrm / c
+            # the output radius (and its double) must be a normal number of the
+            # working dtype, else IEEE quantisation exceeds 16 eps
+            if (float(expected.min()) < 1e3 * fi.tiny or
+                    float(expected.max()) * 2 > fi.max / 1e3):
+                return
             rad = spherical[..., 0].detach().to(torch.float64)
             r_err = float(((rad - expected).abs() / expected).max())
             from deepchem.utils.equivariance_utils import \
@@ -498,6 +504,9 @@ def check_harmonic_mean(sampler, y, result):
         with _checking() as run:
             if not run:
                 return
+            # the library computes in the input dtype: pin eps to the coarsest
+            # floating dtype among the inputs
+            eps_in = max(_eps_of(y), _eps_of(sampler.central_value), _EPS)
             y = np.asarray(y, float)
             cv = np.asarray(sampler.central_value, float)
             if not _sane(y, cv, result):
@@ -508,7 +517,7 @@ def check_harmonic_mean(sampler, y, result):
             dmin = d.min(axis=-2, keepdims=True)
             dmax = d.max(axis=-2, keepdims=True)
             h = np.asarray(result, float)
-            slack = _C * _EPS * cv.shape[0]
+            slack = _C * eps_in * cv.shape[0]
             bad = np.any(h < dmin * (1 - slack)) or np.any(h > dmax * (1 + slack))
             trigger_if(bad or not np.all(np.isfinite(h)), "DC-ES-002")
     except Exception:
@@ -619,7 +628,9 @@ def check_rotate_molecules(before, after):
                 if a.shape != b.shape:
                     trigger("DC-GU-002")
                     return
-                tol = _C * _EPS * max(_maxabs(a), 1e-300) * 3
+                if _maxabs(a) < _MIN_SCALE:
+                    continue
+                tol = _C * _EPS * _maxabs(a) * 3
                 da = np.linalg.norm(a[:, None] - a[None], axis=-1)
                 db = np.linalg.norm(b[:, None] - b[None], axis=-1)
                 ra = np.linalg.norm(a, axis=-1)
@@ -644,6 +655,14 @@ def check_angle_between(vi, vj, angle):
             na, nb = np.linalg.norm(a), np.linalg.norm(b)
             if not (na > 1e-100 and nb > 1e-100):
                 return
+            # squared norms must be normal numbers of the input dtype
+            for x, xf in ((vi, a), (vj, b)):
+                xa = np.asarray(x)
+                if xa.dtype.kind == "f":
+                    fi = np.finfo(xa.dtype)
+                    n2 = float(np.max(np.abs(xf))) ** 2
+                    if 3 * n2 >= float(fi.max) or n2 < 1e3 * float(fi.tiny):
+                        return
             u, v = a / na, b / nb
             ref = math.atan2(float(np.linalg.norm(np.cross(
                 np.pad(u, (0, 3 - u.size)), np.pad(v, (0, 3 - v.size))))),
@@ -678,7 +697,9 @@ def check_pairwise_distances(A, B, D):
             if (A.ndim != 2 or B.ndim != 2 or A.shape[1] != 3 or B.shape[1] != 3
                     or not _sane(A, B, hi=1e100)):
                 return
-            scale = max(_maxabs(A, B), 1e-300)
+            scale = _maxabs(A, B)
+            if scale < _MIN_SCALE:
+                return
             from deepchem.utils.geometry_utils import compute_pairwise_distances
             A2, t = _rigid(A, scale)
             B2 = B @ _rotation().T + t
@@ -786,11 +807,13 @@ def _hbond_margins_ok(frag1, frag2, D, bins, cutoffs):
     scale = max(_maxabs(x1, x2), 1.0)
     if not _sane(x1, x2, D, hi=1e100):
         return False
+    # margins follow the precision of the coordinates the library works in
+    eps_in = max(_eps_of(frag1[0]), _eps_of(frag2[0]), _EPS)
     from scipy.spatial.distance import cdist
     ref = cdist(x1, x2)
     if D.shape != ref.shape or np.max(np.abs(D - ref)) > 1e-9 * scale:
         return False
-    m = 1e-9 * scale
+    m = max(1e-9, 4 * eps_in) * scale
     for lo, hi in bins:
         if np.any(np.abs(D - lo) <= m) or np.any(np.abs(D - hi) <= m):
             return False
@@ -813,7 +836,7 @@ def _hbond_margins_ok(frag1, frag2, D, bins, cutoffs):
         ang = np.degrees(np.arctan2(np.linalg.norm(np.cross(v1, v2), axis=-1),
                                     np.sum(v1 * v2, axis=-1)))
         # rigid-motion rounding eps*scale perturbs an angle by eps*scale/|v|
-        margin = np.degrees(1e3 * _EPS * scale / np.minimum(n1, n2)) + 1e-6
+        margin = np.degrees(1e3 * eps_in * scale / np.minimum(n1, n2)) + 1e-6
         for c in cutoffs:
             if np.any(np.abs(ang - (180.0 - c)) <= margin):
                 return False
@@ -886,12 +909,13 @@ def check_cation_pi(cation, center, normal, dist_cutoff, angle_cutoff, result):
             if dist < 1e-100 or np.linalg.norm(n) < 1e-100:
                 return
             scale = max(_maxabs(c, o), 1.0)
+            eps_in = max(_eps_of(cation), _eps_of(center), _eps_of(normal), _EPS)
             ang = math.degrees(math.atan2(np.linalg.norm(np.cross(vec, n)),
                                           float(vec @ n)))
             # no tested quantity within rounding of its threshold; the angle
             # of (cation - center) carries eps*scale/|vec| of rigid-motion error
-            amargin = math.degrees(1e3 * _EPS * scale / dist) + 1e-7
-            if (abs(dist - dc) <= 1e-9 * scale or abs(ang - ac) <= amargin or
+            amargin = math.degrees(1e3 * eps_in * scale / dist) + 1e-7
+            if (abs(dist - dc) <= max(1e-9, 4 * eps_in) * scale or abs(ang - ac) <= amargin or
                     abs(ang - (180 - ac)) <= amargin):
                 return
             from deepchem.utils.noncovalent_utils import is_cation_pi
