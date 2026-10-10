@@ -132,6 +132,23 @@ def _maxabs(*values):
     return out
 
 
+def _squares_normal(inputs, mags):
+    """True if squares of the magnitudes ``mags`` are normal numbers (neither
+    underflowing nor overflowing) in the coarsest floating dtype of ``inputs``
+    (float64 if none): the dtype in which the library squares them."""
+    tiny, big = float(np.finfo(np.float64).tiny), float(np.finfo(np.float64).max)
+    for v in inputs:
+        try:
+            a = _np(v)
+            if a.dtype.kind == "f":
+                fi = np.finfo(a.dtype)
+                tiny, big = max(tiny, float(fi.tiny)), min(big, float(fi.max))
+        except Exception:
+            _swallowed()
+    mags = [float(m) for m in mags]
+    return all(m * m > 1e3 * tiny and 3 * m * m < big / 1e3 for m in mags)
+
+
 def _violates(diff, tol):
     """True when ``diff`` is not provably within ``tol`` (NaN alarms)."""
     return not (diff <= tol)
@@ -487,12 +504,17 @@ def check_harmonic_mean(sampler, y, result):
             # the library computes in the input dtype: pin eps to the coarsest
             # floating dtype among the inputs
             eps_in = max(_eps_of(y), _eps_of(sampler.central_value), _EPS)
+            y_in = y
             y = np.asarray(y, float)
             cv = np.asarray(sampler.central_value, float)
             if not _sane(y, cv, result):
                 return
             d = np.linalg.norm(y - cv, axis=-1, keepdims=True)
             if not np.all(d > 0):
+                return
+            # squared distances must be normal numbers in the input dtype
+            if not _squares_normal((y_in, sampler.central_value),
+                                   (d.min(), d.max())):
                 return
             dmin = d.min(axis=-2, keepdims=True)
             dmax = d.max(axis=-2, keepdims=True)
@@ -707,6 +729,9 @@ def check_angle_cutoff(vi, vj, cutoff, result):
                     not (0 < c <= 180) or np.linalg.norm(a) < 1e-100 or
                     np.linalg.norm(b) < 1e-100):
                 return
+            if not _squares_normal((vi, vj), (np.linalg.norm(a), np.linalg.norm(b),
+                                              _maxabs(a, b))):
+                return
             from deepchem.utils.geometry_utils import is_angle_within_cutoff
             r = bool(result)
             u, v = a / np.linalg.norm(a), b / np.linalg.norm(b)
@@ -887,6 +912,11 @@ def check_cation_pi(cation, center, normal, dist_cutoff, angle_cutoff, result):
             vec = c - o
             dist = np.linalg.norm(vec)
             if dist < 1e-100 or np.linalg.norm(n) < 1e-100:
+                return
+            # norms the library computes must not underflow/overflow in the
+            # input dtype
+            if not _squares_normal((cation, center, normal),
+                                   (dist, np.linalg.norm(n), _maxabs(c, o, n))):
                 return
             scale = max(_maxabs(c, o), 1.0)
             eps_in = max(_eps_of(cation), _eps_of(center), _eps_of(normal), _EPS)
