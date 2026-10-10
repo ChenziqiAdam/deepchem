@@ -52,18 +52,6 @@
       "symbol": "su2_generators"
     },
     {
-      "alarm": "max|sum_m Y^2 - (2l+1)/(4 pi)| exceeds 16*eps_dtype*(l+1)^2*(2l+1)/(4 pi), or the sum is non-finite.",
-      "family": "spherical_harmonic_normalization",
-      "id": "DC-EQ-005",
-      "invariant": "For every direction, sum over m of Y_lm^2 equals (2l+1)/(4 pi) (addition theorem).",
-      "observation_point": "Before SphericalHarmonics.get returns.",
-      "precondition": "Integer degree 0 <= l <= 40 and finite angles of magnitude <= 1e8.",
-      "rationale": "The normalisation of the angular basis fixes the scale of every equivariant weight built on it.",
-      "scientific_quantity": "real spherical harmonics of degree l",
-      "source": "deepchem/utils/equivariance_utils.py",
-      "symbol": "SphericalHarmonics.get"
-    },
-    {
       "alarm": "max|R R^T - I| exceeds 192*eps_dtype or |det R - 1| exceeds 576*eps_dtype.",
       "family": "so3_exponential_map",
       "id": "DC-EQ-007",

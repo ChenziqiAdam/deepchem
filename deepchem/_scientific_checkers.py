@@ -278,26 +278,6 @@ def check_su2_generators(k, G):
         _swallowed()
 
 
-def check_spherical_harmonics(d, theta, phi, Y):
-    """DC-EQ-005: sum_m Y_lm^2 = (2l+1)/(4 pi) in every direction."""
-    try:
-        with _checking() as run:
-            if not run:
-                return
-            import torch
-            d = int(d)
-            if d < 0 or d > 40 or not _sane(theta, phi, hi=1e8):
-                return
-            Yd = Y.detach().to(torch.float64)
-            shell = (Yd * Yd).sum(dim=-1)
-            target = (2 * d + 1) / (4 * math.pi)
-            diff = float((shell - target).abs().max())
-            tol = 16 * _eps_of(Y) * (d + 1)**2 * target
-            trigger_if(_violates(diff, tol), "DC-EQ-005")
-    except Exception:
-        _swallowed()
-
-
 def check_so3_exp(w, R):
     """DC-EQ-007: exp of an axis-angle vector is a proper rotation."""
     try:

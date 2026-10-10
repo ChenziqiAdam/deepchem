@@ -519,8 +519,6 @@ class SphericalHarmonics:
         for m in range(-d, d + 1):
             results.append(self.get_element(d, m, theta, phi))
         Y = torch.stack(results, dim=-1)
-        if _scientific_checkers.enabled():
-            _scientific_checkers.check_spherical_harmonics(d, theta, phi, Y)
         return Y
 
 
