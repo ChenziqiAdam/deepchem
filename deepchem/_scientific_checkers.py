@@ -20,6 +20,7 @@ import numpy as np
 _ACTIVE = False
 _EPS = float(np.finfo(np.float64).eps)
 _C = 64.0
+_TAYLOR_FLOOR = 1e-9
 _HUGE = 1e100
 
 
@@ -206,7 +207,14 @@ def check_wigner_d(k, alpha, beta, gamma, D):
             D2 = wigner_D(k, -g, -b, -a)
             prod = Dd @ D2.detach().to(torch.float64)
             resid = float((prod - eye).abs().max())
-            tol2 = 2 * tol
+            # The inverse-law residual also carries the rounding of the angle
+            # tensors themselves: the 2*pi range reduction runs in the angle
+            # dtype, so float32 angles under a float64 default leave an
+            # O(eps32 * k) residual that is input precision, not a violation.
+            eps_ang = max([_eps_of(x) for x in (alpha, beta, gamma)
+                           if isinstance(x, torch.Tensor) and x.is_floating_point()]
+                          or [eps])
+            tol2 = 2 * tol * max(1.0, eps_ang / eps)
             trigger_if(_violates(resid, tol2), "DC-EQ-002")
     except Exception:
         _swallowed()
@@ -334,6 +342,10 @@ def check_so3_log(R, w):
             # acos(cos) and theta/sin(theta) each amplify by 1/sin(theta):
             # the conditioning of log near the cut locus is ~1/gap^2.
             tol = _C * _eps_of(R) * (1 + math.pi / gap**2) + 4 * orth
+            # floor: SO3.log uses a truncated Taylor series for small angles
+            # (omitted term ~31x^6/15120, rel err <= ~2.4e-10, exp(log R)-R
+            # <= ~1.7e-11): a design trade-off, not a law violation.
+            tol = max(tol, _TAYLOR_FLOOR)
             trigger_if(_violates(diff, tol), "DC-EQ-008")
     except Exception:
         _swallowed()
@@ -543,6 +555,8 @@ def check_log_prob_gaussian(sampler, y, mu, sigma, result):
         with _checking() as run:
             if not run:
                 return
+            # rounding of the library's own arithmetic is in the INPUT dtype
+            eps_in = max(_eps_of(v) for v in (y, mu, sigma))
             y = np.asarray(y, float)
             mu = np.asarray(mu, float)
             sigma = np.asarray(sigma, float)
@@ -561,7 +575,7 @@ def check_log_prob_gaussian(sampler, y, mu, sigma, result):
             err2 = np.max(np.abs((np.asarray(result, float) - base) - quad))
             mag = (n_coords * (1 + np.max(np.abs(np.log(sig)))) +
                    np.max(np.abs(quad)))
-            tol = _C * _EPS * mag
+            tol = _C * eps_in * mag
             trigger_if(_violates(err1, tol) or _violates(err2, tol),
                        "DC-ES-004")
     except Exception:
@@ -636,7 +650,13 @@ def check_angle_between(vi, vj, angle):
                              float(u @ v))
             # arccos conditioning ~ 1/sin(theta); below sqrt(eps) it cannot
             # resolve the angle at all.
-            tol = _C * _EPS / max(math.sin(ref), 1e-8)
+            # The result inherits the precision of the inputs: float32 vectors
+            # give arccos error ~ eps32/sin(theta), so pin eps to the coarsest
+            # floating input dtype (not always float64).
+            eps = max([_eps_of(x) for x in (vi, vj)
+                       if getattr(x, "dtype", None) is not None
+                       and np.dtype(x.dtype).kind == "f"] + [_EPS])
+            tol = _C * eps / max(math.sin(ref), 1e-8)
             from deepchem.utils.geometry_utils import angle_between
             sw = angle_between(vj, vi)
             sc = angle_between(2.0 * a, 4.0 * b)

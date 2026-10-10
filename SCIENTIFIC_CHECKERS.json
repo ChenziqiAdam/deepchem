@@ -16,7 +16,7 @@
       "symbol": "wigner_D"
     },
     {
-      "alarm": "max|D(a,b,g) D(-g,-b,-a) - I| exceeds twice the EQ-001 tolerance.",
+      "alarm": "max|D(a,b,g) D(-g,-b,-a) - I| exceeds twice the EQ-001 tolerance, scaled by eps(angle dtype)/eps(D) when the angles are coarser than D (range reduction runs in the angle dtype).",
       "family": "so3_irrep_representation",
       "id": "DC-EQ-002",
       "invariant": "D(alpha,beta,gamma) composed with D(-gamma,-beta,-alpha) is the identity (the inverse rotation).",
@@ -76,7 +76,7 @@
       "symbol": "SO3.exp"
     },
     {
-      "alarm": "max|exp(log R) - R| exceeds 64*eps_dtype*(1 + pi/gap^2) + 4*orthogonality residual, with gap = pi - angle (log conditioning near the cut locus).",
+      "alarm": "max|exp(log R) - R| exceeds 64*eps_dtype*(1 + pi/gap^2) + 4*orthogonality residual (floored at 1e-9), with gap = pi - angle (log conditioning near the cut locus).",
       "family": "so3_exponential_map",
       "id": "DC-EQ-008",
       "invariant": "exp(log(R)) = R.",
@@ -196,7 +196,7 @@
       "symbol": "rotate_molecules"
     },
     {
-      "alarm": "Any of the three comparisons differs by more than 64*eps64/max(sin(theta), 1e-8) (arccos conditioning).",
+      "alarm": "Any of the three comparisons differs by more than 64*eps/max(sin(theta), 1e-8) (arccos conditioning), eps being that of the coarsest floating input dtype (eps64 for float64/non-array inputs).",
       "family": "vector_angle",
       "id": "DC-GU-003",
       "invariant": "The angle equals atan2(|a x b|, a.b), is symmetric in its arguments and is unchanged by scaling either vector.",
