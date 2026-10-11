@@ -149,6 +149,29 @@ def _squares_normal(inputs, mags):
     return all(m * m > 1e3 * tiny and 3 * m * m < big / 1e3 for m in mags)
 
 
+def _in_normal_range(dtype, mags, power=1, lower=False, margin=16.0):
+    """True if ``|m|**power`` of every magnitude in ``mags`` is a finite number
+    well inside the normal range of the floating ``dtype`` in which the library
+    computes it (no overflow; with ``lower`` also no subnormal underflow).
+    ``dtype`` is a torch or numpy dtype; non-floating dtypes return True."""
+    try:
+        try:
+            fi = np.finfo(dtype)
+        except Exception:
+            import torch
+            fi = torch.finfo(dtype)
+        tiny, big = float(fi.tiny), float(fi.max)
+    except Exception:
+        return True
+    for m in mags:
+        q = abs(float(m)) ** power
+        if not math.isfinite(q) or q >= big / margin:
+            return False
+        if lower and q <= 1e3 * tiny:
+            return False
+    return True
+
+
 def _violates(diff, tol):
     """True when ``diff`` is not provably within ``tol`` (NaN alarms)."""
     return not (diff <= tol)
@@ -304,6 +327,11 @@ def check_so3_exp(w, R):
             import torch
             if not _sane(w, hi=1e6) or not _finite(R):
                 return
+            # the library squares |w| (and K@K) in the working dtype: the
+            # accumulated quantity 3*max|w|^2 must not overflow it
+            if not _in_normal_range(w.dtype, [math.sqrt(3.0) * _maxabs(w)],
+                                    power=2):
+                return
             Rd = R.detach().to(torch.float64)
             eye = torch.eye(3, dtype=torch.float64)
             orth = float((Rd @ Rd.transpose(-1, -2) - eye).abs().max())
@@ -360,6 +388,11 @@ def check_spherical_chart(cartesian, divide_radius_by, spherical):
                 return
             c = float(divide_radius_by)
             if not (c > 0 and math.isfinite(c)):
+                return
+            # the Python scalar is cast to the working dtype by torch: it must
+            # itself be a normal number there
+            if not _in_normal_range(cartesian.dtype, [c], lower=True,
+                                    margin=1e3):
                 return
             v = cartesian.detach().to(torch.float64)
             nrm = torch.linalg.norm(v, dim=-1)
@@ -485,7 +518,10 @@ def check_electron_init(sampler, no_sample, stddev):
                     continue
                 block = x[:, start:start + n_k]
                 start += n_k
-                mean = block.mean(axis=(0, 1, 2))
+                # exact mean: the check must not count its own O(n eps)
+                # reduction error (visible when stddev == 0)
+                mean = np.array([math.fsum(block[..., d].ravel())
+                                 for d in range(ndim)]) / (b * n_k)
                 tol = (6.0 * float(stddev) / math.sqrt(b * n_k) +
                        _C * _EPS * (1 + _maxabs(cv[k])))
                 if np.any(np.abs(mean - cv[k]) > tol):

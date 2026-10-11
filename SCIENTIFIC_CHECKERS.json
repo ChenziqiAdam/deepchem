@@ -57,7 +57,7 @@
       "id": "DC-EQ-007",
       "invariant": "exp(w) is a proper rotation: orthogonal with determinant +1.",
       "observation_point": "Before SO3.exp returns.",
-      "precondition": "Finite axis-angle vectors of magnitude <= 1e6.",
+      "precondition": "Finite axis-angle vectors of magnitude <= 1e6 whose squared norm (3*max|w|^2) is below max(dtype)/16, so it is representable in the working dtype.",
       "rationale": "A map that is not onto SO(3) corrupts every lifted group element.",
       "scientific_quantity": "rotation matrix from axis-angle vector",
       "source": "deepchem/utils/equivariance_utils.py",
@@ -81,7 +81,7 @@
       "id": "DC-EQ-010",
       "invariant": "The radial output equals |v|/divide_radius_by; scaling v by 2 doubles the radial output and leaves both angles unchanged.",
       "observation_point": "Before get_spherical_from_cartesian returns; re-calls the function on 2v.",
-      "precondition": "Finite vectors whose norms keep squares representable in the working dtype; positive divide_radius_by; the output radius |v|/divide_radius_by (and its double) is a normal number of the dtype.",
+      "precondition": "Finite vectors whose norms keep squares representable in the working dtype; positive divide_radius_by that is itself a normal number of the working dtype; the output radius |v|/divide_radius_by (and its double) is a normal number of the dtype.",
       "rationale": "Direction and length must be independent coordinates, or harmonics are evaluated at the wrong angle.",
       "scientific_quantity": "spherical coordinates of a vector",
       "source": "deepchem/utils/equivariance_utils.py",
@@ -112,7 +112,7 @@
       "symbol": "get_basis"
     },
     {
-      "alarm": "x has the wrong shape, or a block mean deviates from its nucleus by more than 6*stddev/sqrt(batch*n_k) + 64*eps*scale.",
+      "alarm": "x has the wrong shape, or a block mean (computed exactly) deviates from its nucleus by more than 6*stddev/sqrt(batch*n_k) + 64*eps*scale.",
       "family": "electron_initialisation",
       "id": "DC-ES-001",
       "invariant": "x has shape (batch, total electrons, 1, 3) and the electrons of block k, initialised around nucleus k, have mean within 6*stddev/sqrt(batch*n_k) of that nucleus.",
