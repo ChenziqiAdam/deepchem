@@ -149,6 +149,34 @@ def _squares_normal(inputs, mags):
     return all(m * m > 1e3 * tiny and 3 * m * m < big / 1e3 for m in mags)
 
 
+def _int_sub_safe(*operands):
+    """True unless a difference of the operands is evaluated in an integer dtype
+    that can wrap around (all operands integer and the largest possible
+    |a| + |b| exceeds that dtype's range). Floating operands are always safe."""
+    try:
+        arrs = [_np(a) for a in operands]
+        rt = np.result_type(*arrs)
+        if rt.kind not in "iu":
+            return True
+        if rt.kind == "u":
+            return False
+        top = sorted((_maxabs(a) for a in arrs), reverse=True)
+        bound = top[0] + (top[1] if len(top) > 1 else top[0])
+        return bound <= float(np.iinfo(rt).max)
+    except Exception:
+        return False
+
+
+def _integer_k(k):
+    """k as an int if it is integer-valued (integer-spin API), else None."""
+    try:
+        if isinstance(k, bool) or float(k) != int(k):
+            return None
+        return int(k)
+    except Exception:
+        return None
+
+
 def _in_normal_range(dtype, mags, power=1, lower=False, margin=16.0):
     """True if ``|m|**power`` of every magnitude in ``mags`` is a finite number
     well inside the normal range of the floating ``dtype`` in which the library
@@ -202,8 +230,8 @@ def _rigid(points, scale):
 # ================================================================ A. SO(3)
 def _wigner_ok(k, alpha, beta, gamma):
     import torch
-    k = int(k)
-    if k < 0 or k > 32:
+    k = _integer_k(k)
+    if k is None or k < 0 or k > 32:
         return None
     angles = [torch.as_tensor(a).detach() for a in (alpha, beta, gamma)]
     if not all(bool(torch.isfinite(a).all()) for a in angles):
@@ -268,8 +296,8 @@ def check_so3_generators(k, G):
             if not run:
                 return
             import torch
-            k = int(k)
-            if k < 1 or k > 32 or not _finite(G):
+            k = _integer_k(k)
+            if k is None or k < 1 or k > 32 or not _finite(G):
                 return
             from deepchem.utils.equivariance_utils import so3_generators
             ref = so3_generators(1)
@@ -304,11 +332,14 @@ def check_su2_generators(k, G):
             if not run:
                 return
             import torch
-            k = int(k)
-            if k < 0 or k > 64 or not _finite(G):
+            # the representation is fixed by the matrix size n = 2j + 1 (j
+            # integer or half-integer); k must agree with it
+            n = int(G.shape[-1])
+            j = (n - 1) / 2.0
+            if float(k) != j or j > 64 or not _finite(G):
                 return
+            k = j
             Gd = G.detach().to(torch.complex128)
-            n = 2 * k + 1
             cas = (Gd @ Gd).sum(dim=0)
             resid = float((cas + k * (k + 1) * torch.eye(n, dtype=torch.complex128)
                            ).abs().max())
@@ -430,8 +461,8 @@ def check_basis_change(k, Q):
             if not run:
                 return
             import torch
-            k = int(k)
-            if k < 0 or k > 64 or not _finite(Q):
+            k = _integer_k(k)
+            if k is None or k < 0 or k > 64 or not _finite(Q):
                 return
             if not Q.is_complex():
                 # a real dtype cannot represent the complex basis change
@@ -541,6 +572,10 @@ def check_harmonic_mean(sampler, y, result):
             # floating dtype among the inputs
             eps_in = max(_eps_of(y), _eps_of(sampler.central_value), _EPS)
             y_in = y
+            # the library subtracts in the input dtype: integer wraparound is
+            # outside the law's domain
+            if not _int_sub_safe(y, sampler.central_value):
+                return
             y = np.asarray(y, float)
             cv = np.asarray(sampler.central_value, float)
             if not _sane(y, cv, result):
@@ -890,6 +925,9 @@ def check_hydrogen_bonds(frag1, frag2, D, bins, cutoffs, result):
         with _checking() as run:
             if not run:
                 return
+            # the library subtracts coordinates in their own dtype
+            if not _int_sub_safe(frag1[0], frag2[0]):
+                return
             D = np.asarray(D, float)
             if not _hbond_margins_ok(frag1, frag2, D, bins, cutoffs):
                 return
@@ -936,6 +974,8 @@ def check_cation_pi(cation, center, normal, dist_cutoff, angle_cutoff, result):
     try:
         with _checking() as run:
             if not run:
+                return
+            if not _int_sub_safe(cation, center):
                 return
             c, o, n = (np.asarray(v, float) for v in (cation, center, normal))
             if not (c.shape == o.shape == n.shape == (3,)):
