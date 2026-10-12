@@ -273,6 +273,10 @@ def check_wigner_d(k, alpha, beta, gamma, D):
                        "DC-EQ-001")
             from deepchem.utils.equivariance_utils import wigner_D
             a, b, g = (torch.as_tensor(x) for x in (alpha, beta, gamma))
+            # Negation is an inverse only for signed real dtypes (uint8 wraps,
+            # int8 -128 maps to itself): evaluate the inverse in floating point.
+            a, b, g = (x if x.is_floating_point() else x.to(torch.float64)
+                       for x in (a, b, g))
             D2 = wigner_D(k, -g, -b, -a)
             prod = Dd @ D2.detach().to(torch.float64)
             resid = float((prod - eye).abs().max())

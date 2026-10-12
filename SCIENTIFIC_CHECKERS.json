@@ -20,7 +20,7 @@
       "family": "so3_irrep_representation",
       "id": "DC-EQ-002",
       "invariant": "D(alpha,beta,gamma) composed with D(-gamma,-beta,-alpha) is the identity (the inverse rotation).",
-      "observation_point": "Before wigner_D returns; re-calls wigner_D with all three angles negated and reversed.",
+      "observation_point": "Before wigner_D returns; re-calls wigner_D with all three angles negated and reversed (integer angle tensors are converted to float64 first, so negation is the true inverse rotation).",
       "precondition": "Integer degree k >= 0 and finite Euler angles of magnitude <= 1e6.",
       "rationale": "The representation must satisfy the group law; otherwise rotating and un-rotating a feature does not return it.",
       "scientific_quantity": "Wigner D-matrix of an SO(3) irrep",
