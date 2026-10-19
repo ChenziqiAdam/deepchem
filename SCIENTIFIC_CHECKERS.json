@@ -261,7 +261,7 @@
       "id": "DC-NC-002",
       "invariant": "The contact set is unchanged by a common rigid motion of both fragments.",
       "observation_point": "Before compute_hydrogen_bonds returns; re-calls it on rigidly moved copies with all arguments forwarded.",
-      "precondition": "Fragments with coordinates consistent with the supplied distance matrix (integer coordinates must not wrap around on subtraction); no distance, hydrogen distance or angle within rounding of its threshold, rounding being taken at the eps of the coarsest floating coordinate dtype (angle margin 1e3*eps*scale/|v|).",
+      "precondition": "Fragments with coordinates consistent with the supplied distance matrix (integer coordinates must not wrap around on subtraction); no distance, hydrogen distance or angle within rounding of its threshold (the supplied cutoffs and the cutoff the library actually applies, is_hydrogen_bond's default hbond_angle_cutoff), rounding being taken at the eps of the coarsest floating coordinate dtype (angle margin 1e3*eps*scale/|v|).",
       "rationale": "A bond definition must not depend on the laboratory frame.",
       "scientific_quantity": "hydrogen-bond contacts between two fragments",
       "source": "deepchem/utils/noncovalent_utils.py",

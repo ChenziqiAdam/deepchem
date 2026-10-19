@@ -917,7 +917,15 @@ def _hbond_margins_ok(frag1, frag2, D, bins, cutoffs):
                                     np.sum(v1 * v2, axis=-1)))
         # rigid-motion rounding eps*scale perturbs an angle by eps*scale/|v|
         margin = np.degrees(1e3 * eps_in * scale / np.minimum(n1, n2)) + 1e-6
-        for c in cutoffs:
+        # R12: compute_hbonds_in_range passes the cutoff positionally into
+        # is_hydrogen_bond's distance slot (deepchem#5194), so the angle test the
+        # library actually applies uses is_hydrogen_bond's default cutoff: guard
+        # that effective threshold too, not only the supplied ones
+        import inspect
+        from deepchem.utils.noncovalent_utils import is_hydrogen_bond
+        par = inspect.signature(is_hydrogen_bond).parameters.get("hbond_angle_cutoff")
+        eff = [] if par is None or par.default is inspect.Parameter.empty else [float(par.default)]
+        for c in set(float(c) for c in cutoffs) | set(eff):
             if np.any(np.abs(ang - (180.0 - c)) <= margin):
                 return False
     return True
