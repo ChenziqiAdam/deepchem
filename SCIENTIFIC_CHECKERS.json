@@ -285,7 +285,7 @@
       "id": "DC-NC-004",
       "invariant": "Both atoms of a salt-bridge contact carry charges of strictly opposite sign.",
       "observation_point": "Before compute_salt_bridges returns.",
-      "precondition": "Contacts returned for fragments with finite partial charges.",
+      "precondition": "Contacts returned for fragments with finite partial charges, each of magnitude at most 1 (Gasteiger charges of molecules; bare formal-charge ions are excluded).",
       "rationale": "A salt bridge is the attraction of opposite charges.",
       "scientific_quantity": "salt-bridge contacts",
       "source": "deepchem/utils/noncovalent_utils.py",

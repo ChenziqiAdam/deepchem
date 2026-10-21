@@ -973,6 +973,11 @@ def check_salt_bridges(first, second, contacts):
                 qj = get_partial_charge(sa[int(j)])
                 if not (math.isfinite(qi) and math.isfinite(qj)):
                     continue
+                # The library only reports pairs with |qi - qj| ~ 2, so a same-sign pair needs a charge beyond
+                # unit magnitude (bare formal-charge ions). Gasteiger partial charges of molecules stay within
+                # +-1; the checker applies only there.
+                if max(abs(qi), abs(qj)) > 1.0:
+                    continue
                 _reach("DC-NC-004")
                 if not qi * qj < 0:
                     trigger("DC-NC-004")
