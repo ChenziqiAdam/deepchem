@@ -208,6 +208,18 @@ def _violates(diff, tol):
 _R0 = None
 
 
+def _autocast_on(x):
+    """True when torch.autocast is active for the device of tensor x: matmul-class
+    ops then run in bf16/fp16 although the tensors keep their float32 dtype, so a
+    dtype-eps tolerance is not the precision actually used (SANITIZER.md 5.8 T)."""
+    try:
+        import torch
+        return bool(torch.is_autocast_enabled(x.device.type))
+    except Exception:
+        _swallowed()
+    return False
+
+
 def _rotation():
     """A fixed generic proper rotation (axis (1,2,3), angle 0.9 rad)."""
     global _R0
@@ -362,6 +374,9 @@ def check_so3_exp(w, R):
             import torch
             if not _sane(w, hi=1e6) or not _finite(R):
                 return
+            # under autocast K@K runs in bf16: R is float32 but only bf16-accurate
+            if _autocast_on(R):
+                return
             # the library squares |w| (and K@K) in the working dtype: the
             # accumulated quantity 3*max|w|^2 must not overflow it
             if not _in_normal_range(w.dtype, [math.sqrt(3.0) * _maxabs(w)],
@@ -398,7 +413,9 @@ def check_so3_log(R, w):
             if gap < 5e-2:
                 return
             from deepchem.utils.equivariance_utils import SO3
-            back = SO3().exp(w.detach().to(R.dtype))
+            # re-call at the precision of R, not under the caller's autocast
+            with torch.autocast(device_type=R.device.type, enabled=False):
+                back = SO3().exp(w.detach().to(R.dtype))
             diff = float((back.detach().to(torch.float64) - Rd).abs().max())
             # acos(cos) and theta/sin(theta) each amplify by 1/sin(theta):
             # the conditioning of log near the cut locus is ~1/gap^2.
