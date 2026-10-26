@@ -359,7 +359,11 @@ def check_su2_generators(k, G):
             cas = (Gd @ Gd).sum(dim=0)
             resid = float((cas + k * (k + 1) * torch.eye(n, dtype=torch.complex128)
                            ).abs().max())
-            tol = _C * _eps_of(G) * (k + 1)**3 + _C * _EPS
+            # the ladder coefficients are built in torch's default dtype and only
+            # then promoted (bfloat16 has no complex type, so G is complex64):
+            # pin eps to the coarser of output and default dtype, as check_wigner_d
+            eps = max(_eps_of(G), float(torch.finfo(torch.get_default_dtype()).eps))
+            tol = _C * eps * (k + 1)**3 + _C * _EPS
             trigger_if(_violates(resid, tol), "DC-EQ-004")
     except Exception:
         _swallowed()
@@ -766,9 +770,10 @@ def check_angle_between(vi, vj, angle):
             # The result inherits the precision of the inputs: float32 vectors
             # give arccos error ~ eps32/sin(theta), so pin eps to the coarsest
             # floating input dtype (not always float64).
-            eps = max([_eps_of(x) for x in (vi, vj)
-                       if getattr(x, "dtype", None) is not None
-                       and np.dtype(x.dtype).kind == "f"] + [_EPS])
+            # np.asarray is what the library does, so a tuple of float32
+            # scalars computes in float32 too
+            eps = max([_eps_of(np.asarray(x)) for x in (vi, vj)
+                       if np.asarray(x).dtype.kind == "f"] + [_EPS])
             tol = _C * eps / max(math.sin(ref), 1e-8)
             from deepchem.utils.geometry_utils import angle_between
             sw = angle_between(vj, vi)
@@ -917,11 +922,18 @@ def _hbond_margins_ok(frag1, frag2, D, bins, cutoffs):
     z1 = np.array([a.GetAtomicNum() for a in frag1[1].GetAtoms()])
     z2 = np.array([a.GetAtomicNum() for a in frag2[1].GetAtoms()])
     no1, no2 = np.where((z1 == 7) | (z1 == 8))[0], np.where((z2 == 7) | (z2 == 8))[0]
-    h = [(x1[z1 == 1], x1[no1]), (x2[z2 == 1], x2[no2])]
+    # The library's vertex is not always a hydrogen: with the stale index of
+    # deepchem#5194 it can be any atom of frag1 within 1.3 A of an N/O. Gate
+    # every non-N/O atom near an N/O of its fragment (superset of true H).
+    def vertices(x, z, no):
+        near = (cdist(x, x[no]).min(axis=1) < 1.3 + m) if no.size else np.zeros(len(x), bool)
+        return x[((z == 1) | near) & (z != 7) & (z != 8)]
+    v1s, v2s = vertices(x1, z1, no1), vertices(x2, z2, no2)
+    h = [(v1s, x1[no1]), (v2s, x2[no2])]
     for hs, heavy in h:
         if hs.size and heavy.size and np.any(np.abs(cdist(hs, heavy) - 1.3) <= m):
             return False
-    hs_all = np.vstack([x1[z1 == 1], x2[z2 == 1]])
+    hs_all = np.vstack([v1s, v2s])
     if hs_all.size and no1.size and no2.size:
         if hs_all.shape[0] * no1.size * no2.size > 2_000_000:
             return False
